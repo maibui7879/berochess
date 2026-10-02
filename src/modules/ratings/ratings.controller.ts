@@ -1,6 +1,8 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseEnumPipe, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/public.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { RatingType } from '../../common/enums';
 import { RatingsService } from './ratings.service';
 
 @ApiTags('ratings')
@@ -8,7 +10,8 @@ import { RatingsService } from './ratings.service';
 export class RatingsController {
   constructor(private readonly ratingsService: RatingsService) {}
 
-  @Get(':userId')
+  @Public()
+  @Get('user/:userId')
   findAll(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Query() query: PaginationQueryDto,
@@ -16,11 +19,21 @@ export class RatingsController {
     return this.ratingsService.findAll(userId, query);
   }
 
-  @Get(':userId/history')
+  @Public()
+  @Get('user/:userId/history')
   findHistory(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Query() query: PaginationQueryDto,
   ) {
     return this.ratingsService.findHistory(userId, query);
+  }
+
+  @Public()
+  @Get('user/:userId/:type')
+  findOne(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('type', new ParseEnumPipe(RatingType)) type: RatingType,
+  ) {
+    return this.ratingsService.findOne(userId, type);
   }
 }
