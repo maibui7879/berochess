@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { MatchEndReason, MatchMode, MatchStatus, MatchWinner, Side, UserRole } from '../../common/enums';
 import { GameService } from '../game/game.service';
 import { CreateMatchDto } from './dto/create-match.dto';
@@ -201,6 +201,17 @@ export class MatchesService {
   async remove(matchId: string): Promise<void> {
     await this.findOne(matchId);
     await this.matches.delete(matchId);
+  }
+
+  /** User còn match chưa kết thúc (WAITING/READY/PLAYING) không. */
+  async hasActiveMatch(userId: string): Promise<boolean> {
+    const count = await this.matches.count({
+      where: [
+        { redPlayerId: userId, status: In([MatchStatus.WAITING, MatchStatus.READY, MatchStatus.PLAYING]) },
+        { blackPlayerId: userId, status: In([MatchStatus.WAITING, MatchStatus.READY, MatchStatus.PLAYING]) },
+      ],
+    });
+    return count > 0;
   }
 
   findPlayers(matchId: string): Promise<MatchPlayer[]> {

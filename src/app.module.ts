@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
+import { RedisModule } from './redis/redis.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -16,6 +17,7 @@ import { CommentaryModule } from './modules/commentary/commentary.module';
 import { CrowdModule } from './modules/crowd/crowd.module';
 import { GameModule } from './modules/game/game.module';
 import { MatchesModule } from './modules/matches/matches.module';
+import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { UsersModule } from './modules/users/users.module';
@@ -50,6 +52,7 @@ function buildTypeOrmConfig(cs: ConfigService) {
     }),
     TypeOrmModule.forRootAsync({ inject: [ConfigService], useFactory: buildTypeOrmConfig }),
     ScheduleModule.forRoot(),
+    RedisModule,
     HealthModule,
     UsersModule,
     AuthModule,
@@ -60,6 +63,7 @@ function buildTypeOrmConfig(cs: ConfigService) {
     CrowdModule,
     CommentaryModule,
     ModerationModule,
+    MatchmakingModule,
   ],
   controllers: [AppController],
   providers: [
