@@ -37,8 +37,12 @@ export class ChatController {
 
   @ApiBearerAuth()
   @Post('messages')
-  create(@CurrentUser('userId') userId: string, @Body() dto: CreateMessageDto) {
-    return this.chatService.create(userId, dto);
+  create(
+    @CurrentUser('userId') userId: string,
+    @CurrentUser('role') role: UserRole,
+    @Body() dto: CreateMessageDto,
+  ) {
+    return this.chatService.sendMessage(userId, role, dto);
   }
 
   @ApiBearerAuth()

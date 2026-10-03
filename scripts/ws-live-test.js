@@ -224,6 +224,48 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   const lEvt = await leftOnA;
   check('spectator:left broadcast', lEvt.userId === C.user.id);
 
+  // ---- Phase 11: realtime chat ----
+  // A (RED player) gửi MATCH_CHAT -> B nhận.
+  const chatOnB = onceEvent(sB, 'chat:message');
+  const cAck1 = await emitAck(sA2, 'chat:send', { matchId: M.id, channel: 'MATCH_CHAT', content: 'hay lam' });
+  check('chat MATCH_CHAT sent', cAck1.ok === true && cAck1.message.content === 'hay lam', JSON.stringify(cAck1.ok));
+  const cMsg1 = await chatOnB;
+  check('B receives chat:message', cMsg1.message.content === 'hay lam' && cMsg1.message.channel === 'MATCH_CHAT', cMsg1.message.channel);
+
+  // C là spectator RED (đã set ở Phase 9... nhưng đã leave; set lại).
+  await emitAck(sC, 'spectator:team', { matchId: M.id, team: 'RED' });
+  const cAck2 = await emitAck(sC, 'chat:send', { matchId: M.id, channel: 'RED_CHAT', content: 'co len do' });
+  check('RED spectator RED_CHAT ok', cAck2.ok === true);
+  const cAck3 = await emitAck(sC, 'chat:send', { matchId: M.id, channel: 'BLACK_CHAT', content: 'toi la gian diep' });
+  check('RED spectator BLACK_CHAT rejected', cAck3.ok === false && cAck3.reason === 'TEAM_ONLY', JSON.stringify(cAck3));
+  const cAck4 = await emitAck(sB, 'chat:send', { matchId: M.id, channel: 'RED_CHAT', content: 'toi vao nham kenh' });
+  check('BLACK player RED_CHAT rejected', cAck4.ok === false && cAck4.reason === 'TEAM_ONLY', JSON.stringify(cAck4));
+  const cAck5 = await emitAck(sA2, 'chat:send', { matchId: M.id, channel: 'COMMENTARY', content: 'toi binh luan dao' });
+  check('COMMENTARY channel restricted', cAck5.ok === false && cAck5.reason === 'COMMENTATOR_ONLY', JSON.stringify(cAck5));
+
+  // Rate limit: 6 tin cùng lúc từ user mới -> đúng 5 ok + 1 RATE_LIMITED.
+  const H = (await api('POST', '/api/auth/register', null, mk('h'))).data;
+  const sH = await connect(H.accessToken);
+  await emitAck(sH, 'match:join', { matchId: M.id });
+  const batch = await Promise.all(
+    [0, 1, 2, 3, 4, 5].map((i) =>
+      emitAck(sH, 'chat:send', { matchId: M.id, channel: 'MATCH_CHAT', content: `burst ${i}` }),
+    ),
+  );
+  const oks = batch.filter((r) => r.ok).length;
+  const limited = batch.filter((r) => !r.ok && r.reason === 'RATE_LIMITED').length;
+  check('rate limit 5/10s burst', oks === 5 && limited === 1, `${oks} ok / ${limited} limited`);
+  sH.disconnect();
+
+  // Xóa tin nhắn -> broadcast + ẩn khỏi history.
+  const delOnB = onceEvent(sB, 'chat:deleted');
+  const delAck = await emitAck(sA2, 'chat:delete', { id: cAck1.message.id });
+  check('owner deletes message', delAck.ok === true);
+  const dEvt = await delOnB;
+  check('chat:deleted broadcast', dEvt.id === cAck1.message.id);
+  const hist = await api('GET', `/api/chat/messages/${M.id}`);
+  check('deleted hidden from history', Array.isArray(hist.data) && !hist.data.some((m) => m.id === cAck1.message.id));
+
   sD.disconnect();
 
   sA2.disconnect();

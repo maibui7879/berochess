@@ -5,7 +5,6 @@ import {
   NotFoundException,
   UseGuards,
   UsePipes,
-  ValidationPipe,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -30,6 +29,7 @@ import {
 import type { GameResultReason } from 'xiangqi-engine';
 import { Public } from '../../common/decorators/public.decorator';
 import { WsAuthGuard } from '../../common/guards/ws-auth.guard';
+import { WS_VALIDATION_PIPE, withWsJwt } from '../../common/ws/ws-utils';
 import { MatchEndReason, MatchStatus, MatchWinner, Side } from '../../common/enums';
 import { MatchesService } from '../matches/matches.service';
 import { WsMatchJoinDto, WsMoveRequestDto, WsReadyDto, WsSpectatorTeamDto } from './dto/ws-move.dto';
@@ -46,7 +46,7 @@ type AuthedSocket = Socket & {
 };
 
 const roomOf = (matchId: string) => `match:${matchId}`;
-const WS_PIPE = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+const WS_PIPE = WS_VALIDATION_PIPE;
 
 function toDbFen(board: Parameters<typeof boardToFenPart>[0], turn: Side): string {
   return `${boardToFenPart(board)} ${turn === Side.RED ? 'w' : 'b'} - - 0 1`;
@@ -74,23 +74,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   /** Chặn ngay tại handshake: socket không JWT hợp lệ thì connect_error. */
   afterInit(server: Server): void {
-    server.use(async (socket, next) => {
-      try {
-        const token =
-          (socket.handshake.auth?.['token'] as string | undefined) ??
-          socket.handshake.headers.authorization?.replace('Bearer ', '');
-        if (!token) return next(new Error('Missing WS token'));
-        const payload = await this.jwt.verifyAsync(token);
-        socket.data.user = {
-          userId: payload.sub,
-          username: payload.username,
-          role: payload.role,
-        };
-        next();
-      } catch {
-        next(new Error('Invalid WS token'));
-      }
-    });
+    withWsJwt(this.jwt, server);
   }
 
   private userOf(client: AuthedSocket): GatewayUser {
