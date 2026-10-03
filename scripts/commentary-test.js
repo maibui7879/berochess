@@ -21,9 +21,15 @@ async function api(method, path, token, body) {
   return { status: res.status, data: await res.json().catch(() => ({})) };
 }
 async function promoteTo(userId, role) {
-  const env = fs.readFileSync('.env', 'utf8');
-  const url = env.match(/DATABASE_POOL_URL=(.+)/)[1].trim();
-  const c = new Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  const poolUrl =
+    process.env.DATABASE_POOL_URL ||
+    process.env.DATABASE_URL ||
+    fs.readFileSync('.env', 'utf8').match(/DATABASE_POOL_URL=(.+)/)[1].trim();
+  const useSsl = !/localhost|127\.0\.0\.1/.test(poolUrl);
+  const c = new Client({
+    connectionString: poolUrl,
+    ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  });
   await c.connect();
   await c.query('UPDATE users SET role = $1 WHERE id = $2', [role, userId]);
   await c.end();

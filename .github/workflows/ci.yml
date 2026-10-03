@@ -7,6 +7,37 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      DATABASE_SSL: 'false'
+      REDIS_URL: redis://localhost:6379
+      ADMIN_EMAILS: boss@test.local
+      JWT_SECRET: ci_jwt_secret_0123456789abcdef
+      JWT_REFRESH_SECRET: ci_refresh_secret_0123456789abcdef
+      PORT: 3002
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,3 +48,24 @@ jobs:
       - run: npm run build
       - run: npm run test:engine
       - run: npm test
+      - name: Start server
+        run: |
+          node dist/main > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Live API + WebSocket suite
+        run: |
+          export NODE_PATH=./node_modules
+          node scripts/ws-live-test.js
+      - name: Live matchmaking/rating/obs/commentary/events/AI/admin suites
+        run: |
+          export NODE_PATH=./node_modules
+          node scripts/mm-test.js
+          node scripts/rating-test.js
+          node scripts/obs-test.js
+          node scripts/commentary-test.js
+          node scripts/events-test.js
+          node scripts/ai-commentary-test.js
+          node scripts/admin-test.js
+      - name: Stop server
+        if: always()
+        run: kill $(cat server.pid) || true

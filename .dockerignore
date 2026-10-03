@@ -1,0 +1,10 @@
+# Build + runtime images. dist/ is gitignored, node_modules never copied in.
+node_modules/
+dist/
+.git/
+.gitignore
+coverage/
+.env
+frontend/
+packages/*/dist/
+npm-debug.log
