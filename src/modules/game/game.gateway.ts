@@ -38,6 +38,7 @@ import { MatchEndReason, MatchStatus, MatchWinner, Side } from '../../common/enu
 import { MatchesService } from '../matches/matches.service';
 import { WsMatchJoinDto, WsMoveRequestDto, WsReadyDto, WsSpectatorTeamDto } from './dto/ws-move.dto';
 import { GameService, toDbFen } from './game.service';
+import { AiCommentaryService } from '../commentary/ai/ai-commentary.service';
 
 interface GatewayUser {
   userId: string;
@@ -72,6 +73,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly jwt: JwtService,
     private readonly metrics: MetricsService,
     private readonly domainEvents: EventEmitter2,
+    private readonly aiCommentary: AiCommentaryService,
   ) {}
 
   /** Chặn ngay tại handshake: socket không JWT hợp lệ thì connect_error. */
@@ -307,6 +309,22 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
           check,
         });
       }
+
+      // AI bình luận fire-and-forget (không giữ lock, không chặn ack).
+      void this.aiCommentary
+        .maybeComment({
+          matchId: dto.matchId,
+          moveNumber: move.moveNumber,
+          color,
+          from: dto.from,
+          to: dto.to,
+          beforeFen: toDbFen(engine.board, engine.turn as Side),
+          afterFen: payload.fen,
+          captured,
+          check,
+          result: next.result,
+        })
+        .catch((e: Error) => this.logger.warn(`AI commentary failed: ${e.message}`));
 
       if (next.result.over) {
         const { winner, endReason } = this.mapResult(next.result.reason, next.turn as Side);

@@ -26,7 +26,7 @@ export class CommentaryController {
   constructor(private readonly commentaryService: CommentaryService) {}
 
   @ApiBearerAuth()
-  @Roles(UserRole.COMMENTATOR, UserRole.MODERATOR, UserRole.ADMIN)
+  @Roles(UserRole.MODERATOR, UserRole.ADMIN)
   @Post()
   create(@CurrentUser('userId') userId: string, @Body() dto: CreateCommentaryDto) {
     return this.commentaryService.create(userId, dto);
