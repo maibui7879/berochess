@@ -19,6 +19,7 @@
     "test:rating": "node scripts/rating-test.js",
     "test:obs": "node scripts/obs-test.js",
     "test:commentary": "node scripts/commentary-test.js",
+    "test:events": "node scripts/events-test.js",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "ts-node ./src/database/data-source.ts",
