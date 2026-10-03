@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { GameModule } from '../game/game.module';
 import { RatingsModule } from '../ratings/ratings.module';
+import { EventsModule } from '../events/events.module';
 import { MatchClock } from './entities/match-clock.entity';
 import { MatchPlayer } from './entities/match-player.entity';
 import { MatchSpectator } from './entities/match-spectator.entity';
@@ -14,6 +15,7 @@ import { MatchesService } from './matches.service';
     TypeOrmModule.forFeature([Match, MatchPlayer, MatchSpectator, MatchClock]),
     forwardRef(() => GameModule),
     RatingsModule,
+    EventsModule,
   ],
   controllers: [MatchesController],
   providers: [MatchesService],

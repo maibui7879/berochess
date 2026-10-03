@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ChatChannel, SpectatorTeam, UserRole } from '../../common/enums';
@@ -44,6 +45,7 @@ describe('ChatService send rules', () => {
         { provide: getRepositoryToken(ChatMessage), useValue: messagesRepo },
         { provide: MatchesService, useValue: matchesService },
         { provide: ModerationService, useValue: moderationService },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
     service = module.get<ChatService>(ChatService);

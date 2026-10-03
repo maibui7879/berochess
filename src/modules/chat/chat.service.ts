@@ -1,8 +1,10 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { ChatChannel, SpectatorTeam, UserRole } from '../../common/enums';
+import { CHAT_SENT } from '../../common/events';
 import { MatchesService } from '../matches/matches.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -21,6 +23,7 @@ export class ChatService {
     @InjectRepository(ChatMessage) private readonly messages: Repository<ChatMessage>,
     private readonly matches: MatchesService,
     private readonly moderation: ModerationService,
+    private readonly domainEvents: EventEmitter2,
   ) {}
 
   findByMatch(
@@ -50,7 +53,7 @@ export class ChatService {
       throw new ForbiddenException('MUTED');
     }
     this.assertRateLimit(userId, dto.content);
-    return this.messages.save(
+    const saved = await this.messages.save(
       this.messages.create({
         matchId: dto.matchId,
         userId,
@@ -58,6 +61,13 @@ export class ChatService {
         content: dto.content.trim(),
       }),
     );
+    this.domainEvents.emit(CHAT_SENT, {
+      matchId: saved.matchId,
+      userId,
+      messageId: saved.id,
+      channel: saved.channel,
+    });
+    return saved;
   }
 
   private assertChannelAccess(

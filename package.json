@@ -95,8 +95,29 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.[tj]s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "target": "ES2023",
+            "module": "commonjs",
+            "moduleResolution": "node",
+            "experimentalDecorators": true,
+            "emitDecoratorMetadata": true,
+            "allowSyntheticDefaultImports": true,
+            "esModuleInterop": true,
+            "allowJs": true,
+            "skipLibCheck": true,
+            "strictNullChecks": true,
+            "noImplicitAny": false,
+            "forceConsistentCasingInFileNames": true
+          }
+        }
+      ]
     },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!@nestjs/event-emitter/)"
+    ],
     "testEnvironment": "node"
   }
 }

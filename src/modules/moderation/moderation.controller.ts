@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Param,
-  ParseEnumPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -13,9 +12,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
-import { ReportStatus, UserRole } from '../../common/enums';
+import { UserRole } from '../../common/enums';
 import { CreateActionDto } from './dto/create-action.dto';
 import { CreateReportDto } from './dto/create-report.dto';
+import { ReportsQueryDto } from './dto/reports-query.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 import { ModerationService } from './moderation.service';
 
@@ -32,12 +32,8 @@ export class ModerationController {
 
   @Roles(UserRole.MODERATOR, UserRole.ADMIN)
   @Get('reports')
-  findReports(
-    @Query() query: PaginationQueryDto,
-    @Query('status', new ParseEnumPipe(ReportStatus, { optional: true }))
-    status?: ReportStatus,
-  ) {
-    return this.moderationService.findReports(query, status);
+  findReports(@Query() query: ReportsQueryDto) {
+    return this.moderationService.findReports(query, query.status);
   }
 
   @Roles(UserRole.MODERATOR, UserRole.ADMIN)

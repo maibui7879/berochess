@@ -19,7 +19,9 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { JoinMatchDto } from './dto/join-match.dto';
+import { MatchEventsQueryDto } from './dto/match-events-query.dto';
 import { MatchesQueryDto } from './dto/matches-query.dto';
+import { EventsService } from '../events/events.service';
 import { SpectatorTeamDto } from './dto/spectator-team.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { MatchesService } from './matches.service';
@@ -27,7 +29,10 @@ import { MatchesService } from './matches.service';
 @ApiTags('matches')
 @Controller('matches')
 export class MatchesController {
-  constructor(private readonly matchesService: MatchesService) {}
+  constructor(
+    private readonly matchesService: MatchesService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   @ApiBearerAuth()
   @Post()
@@ -128,6 +133,12 @@ export class MatchesController {
   @Get(':id/replay')
   replay(@Param('id', ParseUUIDPipe) id: string) {
     return this.matchesService.getReplay(id);
+  }
+
+  @Public()
+  @Get(':id/events')
+  events(@Param('id', ParseUUIDPipe) id: string, @Query() query: MatchEventsQueryDto) {
+    return this.eventsService.findByMatch(id, query, query.type);
   }
 
   @ApiBearerAuth()

@@ -6,6 +6,7 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { MatchEndReason, MatchMode, MatchStatus, MatchWinner, Side, UserRole } from '../../common/enums';
@@ -16,6 +17,14 @@ import { MatchesQueryDto } from './dto/matches-query.dto';
 import { MatchClock, ClockView, DEFAULT_TIME_CONTROL, TimeControl } from './entities/match-clock.entity';
 import { RatingsService } from '../ratings/ratings.service';
 import { MetricsService } from '../../observability/metrics.service';
+import {
+  GAME_ENDED,
+  MATCH_CREATED,
+  MATCH_STARTED,
+  SPECTATOR_JOINED,
+  SPECTATOR_LEFT,
+  SPECTATOR_TEAM_CHANGED,
+} from '../../common/events';
 import { Move } from '../game/entities/move.entity';
 import { START_FEN, applyMove, createGame } from 'xiangqi-engine';
 import { toDbFen } from '../game/game.service';
@@ -36,6 +45,7 @@ export class MatchesService {
     private readonly clocks: Repository<MatchClock>,
     private readonly ratings: RatingsService,
     private readonly metrics: MetricsService,
+    private readonly domainEvents: EventEmitter2,
     @Inject(forwardRef(() => GameService))
     private readonly game: GameService,
   ) {}
@@ -55,6 +65,11 @@ export class MatchesService {
       }),
     );
     this.metrics.matchesCreated.inc({ mode: match.mode });
+    this.domainEvents.emit(MATCH_CREATED, {
+      matchId: match.id,
+      userId: creatorId,
+      mode: match.mode,
+    });
     await this.players.save(
       this.players.create({ matchId: match.id, userId: creatorId, color: Side.RED }),
     );
@@ -140,6 +155,7 @@ export class MatchesService {
       match.status = MatchStatus.PLAYING;
       match.startedAt = new Date();
       await this.matches.save(match);
+      this.domainEvents.emit(MATCH_STARTED, { matchId });
       await this.ensureClock(matchId);
       await this.game.ensureState(matchId);
       await this.game.setStateStatus(matchId, MatchStatus.PLAYING);
@@ -161,6 +177,11 @@ export class MatchesService {
     match.endedAt = new Date();
     const finished = await this.matches.save(match);
     this.metrics.matchesFinished.inc({ end_reason: finished.endReason ?? 'UNKNOWN', winner: finished.winner ?? 'UNKNOWN' });
+    this.domainEvents.emit(GAME_ENDED, {
+      matchId,
+      winner: finished.winner,
+      endReason: finished.endReason,
+    });
     await this.stopClock(matchId);
     await this.game.setStateStatus(matchId, MatchStatus.FINISHED);
     // Chỉ RANKED mới động vào COMPETITIVE rating (CASUAL/CROWD không xếp hạng).
@@ -238,15 +259,20 @@ export class MatchesService {
     const existing = await this.spectators.findOneBy({ matchId, userId });
     if (existing) {
       existing.team = dto.team;
-      return this.spectators.save(existing);
+      const saved = await this.spectators.save(existing);
+      this.domainEvents.emit(SPECTATOR_TEAM_CHANGED, { matchId, userId, team: saved.team });
+      return saved;
     }
-    return this.spectators.save(
+    const created = await this.spectators.save(
       this.spectators.create({ matchId, userId, team: dto.team }),
     );
+    this.domainEvents.emit(SPECTATOR_JOINED, { matchId, userId, team: created.team });
+    return created;
   }
 
   async leaveSpectators(userId: string, matchId: string): Promise<void> {
     await this.spectators.delete({ matchId, userId });
+    this.domainEvents.emit(SPECTATOR_LEFT, { matchId, userId });
   }
 
   // ---------------------------------------------------------------- Clock

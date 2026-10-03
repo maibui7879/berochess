@@ -20,6 +20,7 @@ import {
 } from '@nestjs/websockets';
 import { JwtService } from '@nestjs/jwt';
 import { Interval } from '@nestjs/schedule';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
 import {
@@ -31,7 +32,7 @@ import type { GameResultReason } from 'xiangqi-engine';
 import { Public } from '../../common/decorators/public.decorator';
 import { WsAuthGuard } from '../../common/guards/ws-auth.guard';
 import { WS_VALIDATION_PIPE, withWsJwt } from '../../common/ws/ws-utils';
-import { COMMENTARY_CREATED, CommentaryCreatedPayload } from '../../common/events';
+import { COMMENTARY_CREATED, CommentaryCreatedPayload, GAME_CHECK, MOVE_PLAYED } from '../../common/events';
 import { MetricsService } from '../../observability/metrics.service';
 import { MatchEndReason, MatchStatus, MatchWinner, Side } from '../../common/enums';
 import { MatchesService } from '../matches/matches.service';
@@ -70,6 +71,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly matches: MatchesService,
     private readonly jwt: JwtService,
     private readonly metrics: MetricsService,
+    private readonly domainEvents: EventEmitter2,
   ) {}
 
   /** Chặn ngay tại handshake: socket không JWT hợp lệ thì connect_error. */
@@ -283,6 +285,28 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       };
       this.server.to(roomOf(dto.matchId)).emit('move:played', payload);
       this.metrics.moves.inc({ color });
+      this.domainEvents.emit(MOVE_PLAYED, {
+        matchId: dto.matchId,
+        userId,
+        moveNumber: move.moveNumber,
+        from: dto.from,
+        to: dto.to,
+        fen: payload.fen,
+        turn: next.turn,
+        check,
+      });
+      if (check) {
+        this.domainEvents.emit(GAME_CHECK, {
+          matchId: dto.matchId,
+          userId,
+          moveNumber: move.moveNumber,
+          from: dto.from,
+          to: dto.to,
+          fen: payload.fen,
+          turn: next.turn,
+          check,
+        });
+      }
 
       if (next.result.over) {
         const { winner, endReason } = this.mapResult(next.result.reason, next.turn as Side);
