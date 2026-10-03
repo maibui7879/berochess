@@ -1,0 +1,14 @@
+{
+  "name": "xiangqi-engine",
+  "version": "0.1.0",
+  "description": "Server-authoritative Xiangqi (Chinese chess) rules engine — framework-free",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --config jest.config.js"
+  },
+  "keywords": ["xiangqi", "chinese-chess", "engine"],
+  "license": "UNLICENSED"
+}

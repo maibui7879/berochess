@@ -4,7 +4,8 @@
   "private": true,
   "description": "Xiangqi Online Crowd - Backend (NestJS modular monolith)",
   "scripts": {
-    "build": "nest build",
+    "build": "node node_modules/typescript/bin/tsc -p packages/xiangqi-engine && node node_modules/@nestjs/cli/bin/nest.js build",
+    "build:engine": "node node_modules/typescript/bin/tsc -p packages/xiangqi-engine",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -12,6 +13,7 @@
     "lint": "eslint \"src/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "jest",
+    "test:engine": "node node_modules/jest/bin/jest.js --config packages/xiangqi-engine/jest.config.js",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "ts-node ./src/database/data-source.ts",
@@ -46,7 +48,8 @@
     "pino": "^9.6.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "xiangqi-engine": "file:packages/xiangqi-engine"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
