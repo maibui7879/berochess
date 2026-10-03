@@ -1,12 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { START_FEN, applyMove, createGame, formatSquare, getLegalMoves } from 'xiangqi-engine';
+import { START_FEN, applyMove, boardToFenPart, createGame, formatSquare, getLegalMoves } from 'xiangqi-engine';
 import type { EngineState } from 'xiangqi-engine';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { MatchStatus, Side } from '../../common/enums';
 import { GameState } from './entities/game-state.entity';
 import { Move } from './entities/move.entity';
+
+/** Board + turn -> FEN đầy đủ để lưu DB / trả client. */
+export function toDbFen(board: Parameters<typeof boardToFenPart>[0], turn: Side): string {
+  return `${boardToFenPart(board)} ${turn === Side.RED ? 'w' : 'b'} - - 0 1`;
+}
 
 export interface ApplyMoveResultInput {
   matchId: string;

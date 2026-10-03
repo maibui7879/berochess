@@ -266,6 +266,28 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   const hist = await api('GET', `/api/chat/messages/${M.id}`);
   check('deleted hidden from history', Array.isArray(hist.data) && !hist.data.some((m) => m.id === cAck1.message.id));
 
+  // ---- Replay + auth throttle ----
+  const rp = await api('GET', `/api/matches/${M.id}/replay`);
+  check(
+    'replay plies with FENs',
+    rp.data.initialFen.startsWith('rnbakabnr') &&
+      rp.data.moves.length === 3 &&
+      rp.data.moves[0].from === 'b0' &&
+      typeof rp.data.moves[0].fenAfter === 'string' &&
+      rp.data.moves[0].fenAfter !== rp.data.initialFen &&
+      rp.data.moves[2].moveNumber === 3,
+    `plies=${rp.data.moves.length}`,
+  );
+
+  // 30 login sai cùng lúc -> ít nhất 10 cái 429 (quota auth 20/phút).
+  const burst = await Promise.all(
+    Array.from({ length: 30 }, () =>
+      api('POST', '/api/auth/login', null, { email: 'nobody@t.local', password: 'saimatkhau1' }),
+    ),
+  );
+  const limited429 = burst.filter((r) => r.status === 429).length;
+  check('auth brute-force throttled', limited429 >= 10, `${limited429}x 429`);
+
   sD.disconnect();
 
   sA2.disconnect();

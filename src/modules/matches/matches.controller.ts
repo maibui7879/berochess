@@ -124,6 +124,12 @@ export class MatchesController {
     return clock;
   }
 
+  @Public()
+  @Get(':id/replay')
+  replay(@Param('id', ParseUUIDPipe) id: string) {
+    return this.matchesService.getReplay(id);
+  }
+
   @ApiBearerAuth()
   @Post(':id/spectators')
   joinSpectators(

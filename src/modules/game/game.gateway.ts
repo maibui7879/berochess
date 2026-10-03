@@ -22,7 +22,6 @@ import { Interval } from '@nestjs/schedule';
 import { Server, Socket } from 'socket.io';
 import {
   applyMove,
-  boardToFenPart,
   isInCheck,
   validateMove,
 } from 'xiangqi-engine';
@@ -33,7 +32,7 @@ import { WS_VALIDATION_PIPE, withWsJwt } from '../../common/ws/ws-utils';
 import { MatchEndReason, MatchStatus, MatchWinner, Side } from '../../common/enums';
 import { MatchesService } from '../matches/matches.service';
 import { WsMatchJoinDto, WsMoveRequestDto, WsReadyDto, WsSpectatorTeamDto } from './dto/ws-move.dto';
-import { GameService } from './game.service';
+import { GameService, toDbFen } from './game.service';
 
 interface GatewayUser {
   userId: string;
@@ -47,10 +46,6 @@ type AuthedSocket = Socket & {
 
 const roomOf = (matchId: string) => `match:${matchId}`;
 const WS_PIPE = WS_VALIDATION_PIPE;
-
-function toDbFen(board: Parameters<typeof boardToFenPart>[0], turn: Side): string {
-  return `${boardToFenPart(board)} ${turn === Side.RED ? 'w' : 'b'} - - 0 1`;
-}
 
 /**
  * Realtime game gateway (namespace /game).

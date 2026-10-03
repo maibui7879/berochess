@@ -15,6 +15,9 @@ import { JoinMatchDto } from './dto/join-match.dto';
 import { MatchesQueryDto } from './dto/matches-query.dto';
 import { MatchClock, ClockView, DEFAULT_TIME_CONTROL, TimeControl } from './entities/match-clock.entity';
 import { RatingsService } from '../ratings/ratings.service';
+import { Move } from '../game/entities/move.entity';
+import { START_FEN, applyMove, createGame } from 'xiangqi-engine';
+import { toDbFen } from '../game/game.service';
 import { SpectatorTeamDto } from './dto/spectator-team.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { MatchPlayer } from './entities/match-player.entity';
@@ -364,5 +367,25 @@ export class MatchesService {
       }
     }
     return out;
+  }
+
+  /**
+   * Replay: toàn bộ moves kèm FEN sau mỗi nước (dựng lại bằng engine).
+   * Client chạy từng ply để xem lại ván đấu.
+   */
+  async getReplay(matchId: string): Promise<{
+    matchId: string;
+    initialFen: string;
+    moves: Array<Move & { fenAfter: string }>;
+  }> {
+    await this.findOne(matchId);
+    const moves = await this.game.findMoves(matchId, { limit: 500, offset: 0 });
+    let engine = createGame();
+    const out: Array<Move & { fenAfter: string }> = [];
+    for (const m of moves) {
+      engine = applyMove(engine, m.from, m.to);
+      out.push({ ...m, fenAfter: toDbFen(engine.board, engine.turn as Side) });
+    }
+    return { matchId, initialFen: START_FEN, moves: out };
   }
 }

@@ -1,8 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator';
 
+@SkipThrottle()
 @Public()
 @ApiTags('health')
 @Controller('health')
