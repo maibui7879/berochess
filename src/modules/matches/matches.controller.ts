@@ -15,10 +15,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { UserRole } from '../../common/enums';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { JoinMatchDto } from './dto/join-match.dto';
+import { MatchesQueryDto } from './dto/matches-query.dto';
 import { SpectatorTeamDto } from './dto/spectator-team.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { MatchesService } from './matches.service';
@@ -36,7 +36,7 @@ export class MatchesController {
 
   @Public()
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: MatchesQueryDto) {
     return this.matchesService.findAll(query);
   }
 

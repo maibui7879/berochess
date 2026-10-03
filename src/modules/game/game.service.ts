@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { START_FEN } from 'xiangqi-engine';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { MatchStatus, Side } from '../../common/enums';
 import { GameState } from './entities/game-state.entity';
@@ -36,8 +37,8 @@ export class GameService {
     });
   }
 
-  /** Tạo state ban đầu nếu chưa có. Dùng bởi match flow / gateway (Phase 5+). */
-  async ensureState(matchId: string, board: unknown): Promise<GameState> {
+  /** Tạo state ban đầu nếu chưa có. Board mặc định là thế cờ khai cuộc (FEN). */
+  async ensureState(matchId: string, board: unknown = START_FEN): Promise<GameState> {
     const existing = await this.findState(matchId);
     if (existing) return existing;
     return this.states.save(
@@ -46,10 +47,14 @@ export class GameService {
         turn: Side.RED,
         moveNumber: 0,
         board,
-        status: MatchStatus.READY,
+        status: MatchStatus.WAITING,
         lastMove: null,
       }),
     );
+  }
+
+  async setStateStatus(matchId: string, status: MatchStatus): Promise<void> {
+    await this.states.update({ matchId }, { status });
   }
 
   /** Persist 1 nước đi (validation nằm ở engine/gateway Phase 6+). */

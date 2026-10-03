@@ -18,6 +18,7 @@ export class GameController {
     return { fen: START_FEN, turn: game.turn, moveNumber: game.moveNumber };
   }
 
+  @Public()
   @Get('states/:matchId')
   async findState(@Param('matchId', ParseUUIDPipe) matchId: string) {
     const state = await this.gameService.findState(matchId);
@@ -25,6 +26,7 @@ export class GameController {
     return state;
   }
 
+  @Public()
   @Get('moves/:matchId')
   findMoves(
     @Param('matchId', ParseUUIDPipe) matchId: string,

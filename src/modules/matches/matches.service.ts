@@ -6,10 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { MatchEndReason, MatchMode, MatchStatus, MatchWinner, Side, UserRole } from '../../common/enums';
+import { GameService } from '../game/game.service';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { JoinMatchDto } from './dto/join-match.dto';
+import { MatchesQueryDto } from './dto/matches-query.dto';
 import { SpectatorTeamDto } from './dto/spectator-team.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { MatchPlayer } from './entities/match-player.entity';
@@ -23,6 +24,7 @@ export class MatchesService {
     @InjectRepository(MatchPlayer) private readonly players: Repository<MatchPlayer>,
     @InjectRepository(MatchSpectator)
     private readonly spectators: Repository<MatchSpectator>,
+    private readonly game: GameService,
   ) {}
 
   /** Tạo match — người tạo ngồi ghế RED. */
@@ -42,8 +44,12 @@ export class MatchesService {
     return match;
   }
 
-  findAll(query: PaginationQueryDto): Promise<Match[]> {
+  findAll(query: MatchesQueryDto): Promise<Match[]> {
     return this.matches.find({
+      where: {
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.mode ? { mode: query.mode } : {}),
+      },
       take: Math.min(query.limit ?? 20, 100),
       skip: query.offset ?? 0,
       order: { createdAt: 'DESC' },
@@ -59,11 +65,18 @@ export class MatchesService {
   /** Join ghế trống (ưu tiên màu yêu cầu). Đủ 2 người → READY. */
   async join(userId: string, matchId: string, dto: JoinMatchDto): Promise<MatchPlayer> {
     const match = await this.findOne(matchId);
+    // Reconnect: player cũ luôn lấy lại được ghế của mình.
+    const existing = await this.players.findOneBy({ matchId, userId });
+    if (existing) {
+      existing.leftAt = null;
+      return this.players.save(existing);
+    }
     if (match.status === MatchStatus.FINISHED) {
       throw new ConflictException('Match already finished');
     }
-    const existing = await this.players.findOneBy({ matchId, userId });
-    if (existing) return existing;
+    if (match.status === MatchStatus.PLAYING) {
+      throw new ConflictException('Match already in progress');
+    }
 
     const taken = new Set(
       (await this.players.findBy({ matchId })).map((p) => p.color),
@@ -98,7 +111,7 @@ export class MatchesService {
     }
   }
 
-  /** Báo sẵn sàng. Cả 2 ready → PLAYING. */
+  /** Báo sẵn sàng. Cả 2 ready → PLAYING + tạo bàn cờ khai cuộc. */
   async setReady(userId: string, matchId: string): Promise<Match> {
     const player = await this.players.findOneBy({ matchId, userId });
     if (!player) throw new NotFoundException('Not a player of this match');
@@ -110,8 +123,27 @@ export class MatchesService {
       match.status = MatchStatus.PLAYING;
       match.startedAt = new Date();
       await this.matches.save(match);
+      await this.game.ensureState(matchId);
+      await this.game.setStateStatus(matchId, MatchStatus.PLAYING);
     }
     return match;
+  }
+
+  /** Kết thúc match — dùng chung cho resign/timeout/draw/disconnect/forfeit/checkmate. */
+  async finish(
+    matchId: string,
+    winner: MatchWinner,
+    endReason: MatchEndReason,
+  ): Promise<Match> {
+    const match = await this.findOne(matchId);
+    if (match.status === MatchStatus.FINISHED) return match;
+    match.winner = winner;
+    match.endReason = endReason;
+    match.status = MatchStatus.FINISHED;
+    match.endedAt = new Date();
+    const finished = await this.matches.save(match);
+    await this.game.setStateStatus(matchId, MatchStatus.FINISHED);
+    return finished;
   }
 
   /** Đầu hàng — đối thủ thắng, match FINISHED. */
@@ -123,11 +155,11 @@ export class MatchesService {
     if (userId !== match.redPlayerId && userId !== match.blackPlayerId) {
       throw new ForbiddenException('Only players can resign');
     }
-    match.winner = userId === match.redPlayerId ? MatchWinner.BLACK : MatchWinner.RED;
-    match.endReason = MatchEndReason.RESIGN;
-    match.status = MatchStatus.FINISHED;
-    match.endedAt = new Date();
-    return this.matches.save(match);
+    return this.finish(
+      matchId,
+      userId === match.redPlayerId ? MatchWinner.BLACK : MatchWinner.RED,
+      MatchEndReason.RESIGN,
+    );
   }
 
   async update(
