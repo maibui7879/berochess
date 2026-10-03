@@ -11,6 +11,7 @@ import {
 import {
   ConnectedSocket,
   MessageBody,
+  OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
   SubscribeMessage,
@@ -29,6 +30,7 @@ import type { GameResultReason } from 'xiangqi-engine';
 import { Public } from '../../common/decorators/public.decorator';
 import { WsAuthGuard } from '../../common/guards/ws-auth.guard';
 import { WS_VALIDATION_PIPE, withWsJwt } from '../../common/ws/ws-utils';
+import { MetricsService } from '../../observability/metrics.service';
 import { MatchEndReason, MatchStatus, MatchWinner, Side } from '../../common/enums';
 import { MatchesService } from '../matches/matches.service';
 import { WsMatchJoinDto, WsMoveRequestDto, WsReadyDto, WsSpectatorTeamDto } from './dto/ws-move.dto';
@@ -54,7 +56,7 @@ const WS_PIPE = WS_VALIDATION_PIPE;
 @Public()
 @UseGuards(WsAuthGuard)
 @WebSocketGateway({ namespace: '/game', cors: { origin: true, credentials: true } })
-export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
+export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(GameGateway.name);
   /** Mutex theo matchId: serialize mọi move:request, chống double-move khi race. */
@@ -65,6 +67,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
     @Inject(forwardRef(() => MatchesService))
     private readonly matches: MatchesService,
     private readonly jwt: JwtService,
+    private readonly metrics: MetricsService,
   ) {}
 
   /** Chặn ngay tại handshake: socket không JWT hợp lệ thì connect_error. */
@@ -277,6 +280,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
         state,
       };
       this.server.to(roomOf(dto.matchId)).emit('move:played', payload);
+      this.metrics.moves.inc({ color });
 
       if (next.result.over) {
         const { winner, endReason } = this.mapResult(next.result.reason, next.turn as Side);
@@ -298,7 +302,12 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
     }
   }
 
+  handleConnection(): void {
+    this.metrics.wsConnections.inc({ gateway: 'game' });
+  }
+
   handleDisconnect(client: AuthedSocket): void {
+    this.metrics.wsConnections.dec({ gateway: 'game' });
     const userId = client.data.user?.userId;
     if (!userId || !client.data.matches) return;
     for (const matchId of client.data.matches) {

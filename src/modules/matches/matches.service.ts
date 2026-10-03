@@ -15,6 +15,7 @@ import { JoinMatchDto } from './dto/join-match.dto';
 import { MatchesQueryDto } from './dto/matches-query.dto';
 import { MatchClock, ClockView, DEFAULT_TIME_CONTROL, TimeControl } from './entities/match-clock.entity';
 import { RatingsService } from '../ratings/ratings.service';
+import { MetricsService } from '../../observability/metrics.service';
 import { Move } from '../game/entities/move.entity';
 import { START_FEN, applyMove, createGame } from 'xiangqi-engine';
 import { toDbFen } from '../game/game.service';
@@ -34,6 +35,7 @@ export class MatchesService {
     @InjectRepository(MatchClock)
     private readonly clocks: Repository<MatchClock>,
     private readonly ratings: RatingsService,
+    private readonly metrics: MetricsService,
     @Inject(forwardRef(() => GameService))
     private readonly game: GameService,
   ) {}
@@ -52,6 +54,7 @@ export class MatchesService {
         },
       }),
     );
+    this.metrics.matchesCreated.inc({ mode: match.mode });
     await this.players.save(
       this.players.create({ matchId: match.id, userId: creatorId, color: Side.RED }),
     );
@@ -157,6 +160,7 @@ export class MatchesService {
     match.status = MatchStatus.FINISHED;
     match.endedAt = new Date();
     const finished = await this.matches.save(match);
+    this.metrics.matchesFinished.inc({ end_reason: finished.endReason ?? 'UNKNOWN', winner: finished.winner ?? 'UNKNOWN' });
     await this.stopClock(matchId);
     await this.game.setStateStatus(matchId, MatchStatus.FINISHED);
     // Chỉ RANKED mới động vào COMPETITIVE rating (CASUAL/CROWD không xếp hạng).

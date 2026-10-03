@@ -15,4 +15,6 @@ export const envValidationSchema = Joi.object({
   LIVEKIT_API_KEY: Joi.string().allow('', null).optional(),
   LIVEKIT_API_SECRET: Joi.string().allow('', null).optional(),
   CORS_ORIGIN: Joi.string().allow('', null).optional(),
+  SENTRY_DSN: Joi.string().allow('', null).optional(),
+  SENTRY_TRACES_RATE: Joi.number().min(0).max(1).default(0).optional(),
 });

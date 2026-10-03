@@ -8,6 +8,7 @@ import {
 import { randomUUID } from 'crypto';
 import type { Redis } from 'ioredis';
 import { MatchMode, RatingType, Side } from '../../common/enums';
+import { MetricsService } from '../../observability/metrics.service';
 import { TimeControlDto } from '../matches/dto/time-control.dto';
 import { MatchesService } from '../matches/matches.service';
 import { RatingsService } from '../ratings/ratings.service';
@@ -26,6 +27,7 @@ export class MatchmakingService {
     @Inject('REDIS') private readonly redis: Redis,
     private readonly matches: MatchesService,
     private readonly ratings: RatingsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   private queueKey(mode: MatchMode): string {
@@ -163,6 +165,7 @@ export class MatchmakingService {
       pipeline.set(this.resultKey(userId), match.id, 'EX', 300);
       pipeline.set(this.resultKey(partner), match.id, 'EX', 300);
       await pipeline.exec();
+      this.metrics.pairs.inc({ mode });
       this.logger.log(`Paired ${partner} vs ${userId} -> match ${match.id}`);
       return match.id;
     } finally {
