@@ -1,4 +1,5 @@
-import { IsString, IsUUID, Matches } from 'class-validator';
+import { IsEnum, IsString, IsUUID, Matches } from 'class-validator';
+import { SpectatorTeam } from '../../../common/enums';
 
 const SQUARE = /^[a-i][0-9]$/;
 
@@ -23,4 +24,12 @@ export class WsMoveRequestDto {
   @IsString()
   @Matches(SQUARE)
   to!: string;
+}
+
+export class WsSpectatorTeamDto {
+  @IsUUID()
+  matchId!: string;
+
+  @IsEnum(SpectatorTeam)
+  team!: SpectatorTeam;
 }

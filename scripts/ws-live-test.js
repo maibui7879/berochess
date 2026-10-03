@@ -210,6 +210,20 @@ function onceEvent(socket, event, timeoutMs = 15000) {
     tm = await api('GET', `/api/matches/${TM.id}`);
   }
   check('timeout finishes BLACK wins', tm.data.status === 'FINISHED' && tm.data.winner === 'BLACK' && tm.data.endReason === 'TIMEOUT', JSON.stringify({ s: tm.data.status, w: tm.data.winner, e: tm.data.endReason }));
+  // ---- Phase 9: spectator presence ----
+  const teamOnA = onceEvent(sA2, 'spectator:team-changed');
+  const tAck = await emitAck(sC, 'spectator:team', { matchId: M.id, team: 'RED' });
+  check('spectator team set', tAck.ok === true && tAck.team === 'RED', JSON.stringify(tAck));
+  const tEvt = await teamOnA;
+  check('team change broadcast to room', tEvt.userId === C.user.id && tEvt.team === 'RED', JSON.stringify({ team: tEvt.team }));
+  const re = await emitAck(sC, 'match:join', { matchId: M.id });
+  check('snapshot has spectators+myTeam', re.ok === true && re.myTeam === 'RED' && re.spectators.some((s) => s.userId === C.user.id));
+  const leftOnA = onceEvent(sA2, 'spectator:left');
+  const lAck = await emitAck(sC, 'spectator:leave', { matchId: M.id });
+  check('spectator leave ok', lAck.ok === true);
+  const lEvt = await leftOnA;
+  check('spectator:left broadcast', lEvt.userId === C.user.id);
+
   sD.disconnect();
 
   sA2.disconnect();

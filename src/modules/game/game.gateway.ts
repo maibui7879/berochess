@@ -32,7 +32,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { WsAuthGuard } from '../../common/guards/ws-auth.guard';
 import { MatchEndReason, MatchStatus, MatchWinner, Side } from '../../common/enums';
 import { MatchesService } from '../matches/matches.service';
-import { WsMatchJoinDto, WsMoveRequestDto, WsReadyDto } from './dto/ws-move.dto';
+import { WsMatchJoinDto, WsMoveRequestDto, WsReadyDto, WsSpectatorTeamDto } from './dto/ws-move.dto';
 import { GameService } from './game.service';
 
 interface GatewayUser {
@@ -136,6 +136,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
       const { userId } = this.userOf(client);
       const match = await this.matches.findOne(dto.matchId);
       const players = await this.matches.findPlayers(dto.matchId);
+      const spectators = await this.matches.findSpectators(dto.matchId);
       const state = await this.game.findState(dto.matchId);
       const clock = await this.matches.getClockView(dto.matchId);
       const room = roomOf(dto.matchId);
@@ -156,9 +157,11 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
         ok: true,
         match,
         players,
+        spectators,
         state,
         clock,
         myColor,
+        myTeam: spectators.find((s) => s.userId === userId)?.team ?? null,
       };
     } catch (e) {
       return this.err(e instanceof NotFoundException ? 'MATCH_NOT_FOUND' : 'JOIN_FAILED');
@@ -177,8 +180,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   @UsePipes(WS_PIPE)
   @SubscribeMessage('player:ready')
-  async handleReady(@ConnectedSocket() client: AuthedSocket, @MessageBody() dto: WsReadyDto) {
-    try {
+  async handleReady(@ConnectedSocket() client: AuthedSocket, @MessageBody() dto: WsReadyDto) {    try {
       const { userId } = this.userOf(client);
       const match = await this.matches.setReady(userId, dto.matchId);
       this.server.to(roomOf(dto.matchId)).emit('player:ready', {
@@ -195,6 +197,39 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
       if (e instanceof NotFoundException) return this.err('MATCH_NOT_FOUND');
       return this.err('READY_FAILED');
     }
+  }
+
+  @UsePipes(WS_PIPE)
+  @SubscribeMessage('spectator:team')
+  async handleSpectatorTeam(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() dto: WsSpectatorTeamDto,
+  ) {
+    try {
+      const { userId } = this.userOf(client);
+      const spec = await this.matches.joinSpectators(userId, dto.matchId, { team: dto.team });
+      this.server.to(roomOf(dto.matchId)).emit('spectator:team-changed', {
+        matchId: dto.matchId,
+        userId,
+        team: spec.team,
+      });
+      return { ok: true, team: spec.team };
+    } catch (e) {
+      if (e instanceof NotFoundException) return this.err('MATCH_NOT_FOUND');
+      return this.err('SPECTATOR_FAILED');
+    }
+  }
+
+  @UsePipes(WS_PIPE)
+  @SubscribeMessage('spectator:leave')
+  async handleSpectatorLeave(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() dto: WsMatchJoinDto,
+  ) {
+    const { userId } = this.userOf(client);
+    await this.matches.leaveSpectators(userId, dto.matchId);
+    this.server.to(roomOf(dto.matchId)).emit('spectator:left', { matchId: dto.matchId, userId });
+    return { ok: true };
   }
 
   @UsePipes(WS_PIPE)
