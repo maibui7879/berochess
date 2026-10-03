@@ -17,6 +17,7 @@
     "test:ws:live": "node scripts/ws-live-test.js",
     "test:mm": "node scripts/mm-test.js",
     "test:rating": "node scripts/rating-test.js",
+    "test:obs": "node scripts/obs-test.js",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "ts-node ./src/database/data-source.ts",
