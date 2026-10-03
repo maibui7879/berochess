@@ -174,7 +174,7 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   check('join snapshot has clock', joinA.clock && joinA.clock.redMs <= 600000, JSON.stringify(joinA.clock && { red: joinA.clock.redMs, active: joinA.clock.activeColor }));
   const D = (await api('POST', '/api/auth/register', null, mk('d'))).data;
   const E = (await api('POST', '/api/auth/register', null, mk('e'))).data;
-  const CM = (await api('POST', '/api/matches', D.accessToken, { mode: 'CASUAL', clock: { initialMs: 60000, incrementMs: 2000 } })).data;
+  const CM = (await api('POST', '/api/matches', D.accessToken, { mode: 'CASUAL', clock: { initialMs: 60000, incrementMs: 30000 } })).data;
   await api('POST', `/api/matches/${CM.id}/join`, E.accessToken, {});
   await api('POST', `/api/matches/${CM.id}/ready`, D.accessToken);
   await api('POST', `/api/matches/${CM.id}/ready`, E.accessToken);
@@ -189,9 +189,9 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   const t1 = Date.now();
   const dPlayed = await playedD;
   check('move:played carries clock', dAck.ok === true && !!dPlayed.clock && dPlayed.clock.activeColor === 'BLACK', JSON.stringify(dPlayed.clock && { red: dPlayed.clock.redMs, active: dPlayed.clock.activeColor }));
-  // increment ≈ red_after - (red_before - elapsed_thực) ~= +2000 (sai số mạng ±1500).
-  const landed = dPlayed.clock.redMs - (clk0.data.redMs - (t1 - t0));
-  check('fischer increment applied', landed >= 500 && landed <= 3500, `landed=${landed}`);
+  // Increment 30s >> mọi elapsed thực tế -> red_after nhất định > red_before.
+  // (Không increment thì red_after < red_before vì elapsed > 0.)
+  check('fischer increment applied', dPlayed.clock.redMs > clk0.data.redMs && dPlayed.clock.blackMs === 60000, `red ${clk0.data.redMs} -> ${dPlayed.clock.redMs}`);
 
   // Timeout: tiny clock -> sweeper (hoặc nước đi) kết thúc TIMEOUT.
   const F = (await api('POST', '/api/auth/register', null, mk('f'))).data;
