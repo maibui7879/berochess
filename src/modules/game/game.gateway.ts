@@ -20,6 +20,7 @@ import {
 } from '@nestjs/websockets';
 import { JwtService } from '@nestjs/jwt';
 import { Interval } from '@nestjs/schedule';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
 import {
   applyMove,
@@ -30,6 +31,7 @@ import type { GameResultReason } from 'xiangqi-engine';
 import { Public } from '../../common/decorators/public.decorator';
 import { WsAuthGuard } from '../../common/guards/ws-auth.guard';
 import { WS_VALIDATION_PIPE, withWsJwt } from '../../common/ws/ws-utils';
+import { COMMENTARY_CREATED, CommentaryCreatedPayload } from '../../common/events';
 import { MetricsService } from '../../observability/metrics.service';
 import { MatchEndReason, MatchStatus, MatchWinner, Side } from '../../common/enums';
 import { MatchesService } from '../matches/matches.service';
@@ -317,10 +319,17 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
+  /** Bình luận mới -> đẩy realtime về room của match. */
+  @OnEvent(COMMENTARY_CREATED)
+  handleCommentaryCreated(payload: CommentaryCreatedPayload): void {
+    this.server
+      .to(roomOf(payload.matchId))
+      .emit('commentary:new', { matchId: payload.matchId, commentary: payload.commentary });
+  }
+
   /** Quét hết giờ mỗi 5s (server-time). Match nào flag thì broadcast game:ended. */
   @Interval(5000)
-  async handleTimeoutSweep(): Promise<void> {
-    try {
+  async handleTimeoutSweep(): Promise<void> {    try {
       const timedOut = await this.matches.sweepTimeouts();
       for (const t of timedOut) {
         this.server.to(roomOf(t.matchId)).emit('game:ended', {

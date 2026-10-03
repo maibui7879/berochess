@@ -1,6 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { COMMENTARY_CREATED, CommentaryCreatedPayload } from '../../common/events';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { UserRole } from '../../common/enums';
 import { CreateCommentaryDto } from './dto/create-commentary.dto';
@@ -11,10 +13,11 @@ export class CommentaryService {
   constructor(
     @InjectRepository(Commentary)
     private readonly commentaries: Repository<Commentary>,
+    private readonly events: EventEmitter2,
   ) {}
 
-  create(userId: string, dto: CreateCommentaryDto): Promise<Commentary> {
-    return this.commentaries.save(
+  async create(userId: string, dto: CreateCommentaryDto): Promise<Commentary> {
+    const saved = await this.commentaries.save(
       this.commentaries.create({
         matchId: dto.matchId,
         userId,
@@ -22,6 +25,17 @@ export class CommentaryService {
         metadata: dto.metadata ?? null,
       }),
     );
+    const payload: CommentaryCreatedPayload = {
+      matchId: saved.matchId,
+      commentary: {
+        id: saved.id,
+        userId: saved.userId,
+        content: saved.content,
+        createdAt: saved.createdAt,
+      },
+    };
+    this.events.emit(COMMENTARY_CREATED, payload);
+    return saved;
   }
 
   findByMatch(matchId: string, query: PaginationQueryDto): Promise<Commentary[]> {
