@@ -347,10 +347,11 @@ Roles:
 ```text
 PLAYER
 SPECTATOR
-COMMENTATOR
 MODERATOR
 ADMIN
 ```
+
+(Bình luận viên là AI hệ thống, không còn role người dùng.)
 
 Role phải được backend xác thực, không tin role từ client.
 

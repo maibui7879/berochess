@@ -36,6 +36,8 @@ export class AiCommentaryService {
     const existing = await this.users.findOneBy({ username: BOT_USERNAME });
     if (existing) return existing;
     try {
+      // Bot không bao giờ đăng nhập (password ngẫu nhiên) nên role chỉ để đủ schema.
+      // Kênh COMMENTARY của người do MODERATOR/ADMIN đảm nhiệm.
       return await this.users.save(
         this.users.create({
           username: BOT_USERNAME,
@@ -44,7 +46,7 @@ export class AiCommentaryService {
           displayName: 'AI Bình Luận',
           avatarUrl: null,
           status: UserStatus.ACTIVE,
-          role: UserRole.COMMENTATOR,
+          role: UserRole.PLAYER,
         }),
       );
     } catch {

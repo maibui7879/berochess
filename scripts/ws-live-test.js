@@ -241,7 +241,7 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   const cAck4 = await emitAck(sB, 'chat:send', { matchId: M.id, channel: 'RED_CHAT', content: 'toi vao nham kenh' });
   check('BLACK player RED_CHAT rejected', cAck4.ok === false && cAck4.reason === 'TEAM_ONLY', JSON.stringify(cAck4));
   const cAck5 = await emitAck(sA2, 'chat:send', { matchId: M.id, channel: 'COMMENTARY', content: 'toi binh luan dao' });
-  check('COMMENTARY channel restricted', cAck5.ok === false && cAck5.reason === 'COMMENTATOR_ONLY', JSON.stringify(cAck5));
+  check('COMMENTARY channel restricted', cAck5.ok === false && cAck5.reason === 'MODERATOR_ONLY', JSON.stringify(cAck5));
 
   // Rate limit: 6 tin cùng lúc từ user mới -> đúng 5 ok + 1 RATE_LIMITED.
   const H = (await api('POST', '/api/auth/register', null, mk('h'))).data;

@@ -78,12 +78,8 @@ export class ChatService {
     spectators: Array<{ userId: string; team: SpectatorTeam }>,
   ): void {
     if (channel === ChatChannel.COMMENTARY) {
-      if (
-        role !== UserRole.COMMENTATOR &&
-        role !== UserRole.MODERATOR &&
-        role !== UserRole.ADMIN
-      ) {
-        throw new ForbiddenException('COMMENTATOR_ONLY');
+      if (role !== UserRole.MODERATOR && role !== UserRole.ADMIN) {
+        throw new ForbiddenException('MODERATOR_ONLY');
       }
       return;
     }

@@ -7,7 +7,6 @@ export enum UserStatus {
 export enum UserRole {
   PLAYER = 'PLAYER',
   SPECTATOR = 'SPECTATOR',
-  COMMENTATOR = 'COMMENTATOR',
   MODERATOR = 'MODERATOR',
   ADMIN = 'ADMIN',
 }

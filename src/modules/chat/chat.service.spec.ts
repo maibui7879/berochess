@@ -70,12 +70,12 @@ describe('ChatService send rules', () => {
     ).rejects.toThrow('TEAM_ONLY');
   });
 
-  it('restricts COMMENTARY channel to commentators+', async () => {
+  it('restricts COMMENTARY channel to moderators+', async () => {
     await expect(
       service.sendMessage('red-user', UserRole.PLAYER, { ...base, channel: ChatChannel.COMMENTARY, content: 'c1' }),
-    ).rejects.toThrow('COMMENTATOR_ONLY');
+    ).rejects.toThrow('MODERATOR_ONLY');
     await expect(
-      service.sendMessage('caster', UserRole.COMMENTATOR, { ...base, channel: ChatChannel.COMMENTARY, content: 'c2' }),
+      service.sendMessage('mod', UserRole.MODERATOR, { ...base, channel: ChatChannel.COMMENTARY, content: 'c2' }),
     ).resolves.toBeDefined();
   });
 

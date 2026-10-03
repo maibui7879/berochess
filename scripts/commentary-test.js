@@ -75,10 +75,10 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   const denied = await api('POST', '/api/commentary', caster.accessToken, { matchId: M.id, content: 'xin chao' });
   check('player commentary rejected 403', denied.status === 403, `status=${denied.status}`);
 
-  // Promote + login lại để JWT có role mới.
-  await promoteTo(caster.user.id, 'COMMENTATOR');
+  // Promote MODERATOR để được viết commentary (role COMMENTATOR đã bỏ).
+  await promoteTo(caster.user.id, 'MODERATOR');
   caster = (await api('POST', '/api/auth/login', null, { email: `cmcaster${tag}@t.local`, password: 'matkhau123' })).data;
-  check('commentator role in JWT', caster.user.role === 'COMMENTATOR', caster.user.role);
+  check('moderator role in JWT', caster.user.role === 'MODERATOR', caster.user.role);
 
   const news = onceEvent(sFan, 'commentary:new');
   const created = await api('POST', '/api/commentary', caster.accessToken, {
