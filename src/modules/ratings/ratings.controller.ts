@@ -11,6 +11,16 @@ export class RatingsController {
   constructor(private readonly ratingsService: RatingsService) {}
 
   @Public()
+  @Get('leaderboard')
+  leaderboard(
+    @Query('type', new ParseEnumPipe(RatingType, { optional: true }))
+    type: RatingType = RatingType.COMPETITIVE,
+    @Query('limit') limit = 20,
+  ) {
+    return this.ratingsService.leaderboard(type, Number(limit) || 20);
+  }
+
+  @Public()
   @Get('user/:userId')
   findAll(
     @Param('userId', ParseUUIDPipe) userId: string,

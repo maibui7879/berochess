@@ -14,6 +14,7 @@ import { CreateMatchDto } from './dto/create-match.dto';
 import { JoinMatchDto } from './dto/join-match.dto';
 import { MatchesQueryDto } from './dto/matches-query.dto';
 import { MatchClock, ClockView, DEFAULT_TIME_CONTROL, TimeControl } from './entities/match-clock.entity';
+import { RatingsService } from '../ratings/ratings.service';
 import { SpectatorTeamDto } from './dto/spectator-team.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import { MatchPlayer } from './entities/match-player.entity';
@@ -29,6 +30,7 @@ export class MatchesService {
     private readonly spectators: Repository<MatchSpectator>,
     @InjectRepository(MatchClock)
     private readonly clocks: Repository<MatchClock>,
+    private readonly ratings: RatingsService,
     @Inject(forwardRef(() => GameService))
     private readonly game: GameService,
   ) {}
@@ -154,6 +156,10 @@ export class MatchesService {
     const finished = await this.matches.save(match);
     await this.stopClock(matchId);
     await this.game.setStateStatus(matchId, MatchStatus.FINISHED);
+    // Chỉ RANKED mới động vào COMPETITIVE rating (CASUAL/CROWD không xếp hạng).
+    if (match.mode === MatchMode.RANKED && match.redPlayerId && match.blackPlayerId) {
+      await this.ratings.applyRankedResult(matchId, match.redPlayerId, match.blackPlayerId, winner);
+    }
     return finished;
   }
 
