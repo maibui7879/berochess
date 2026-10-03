@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { START_FEN } from 'xiangqi-engine';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { START_FEN, applyMove, createGame } from 'xiangqi-engine';
+import type { EngineState } from 'xiangqi-engine';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { MatchStatus, Side } from '../../common/enums';
 import { GameState } from './entities/game-state.entity';
 import { Move } from './entities/move.entity';
 
-export interface RecordMoveInput {
+export interface ApplyMoveResultInput {
   matchId: string;
   playerId: string;
   from: string;
@@ -15,6 +16,10 @@ export interface RecordMoveInput {
   capturedPiece?: string | null;
   notation?: string | null;
   boardHash?: string | null;
+  /** Full FEN sau nước đi (engine là nguồn duy nhất của board truth). */
+  boardFen: string;
+  turn: Side;
+  status: MatchStatus;
 }
 
 @Injectable()
@@ -22,6 +27,7 @@ export class GameService {
   constructor(
     @InjectRepository(GameState) private readonly states: Repository<GameState>,
     @InjectRepository(Move) private readonly moves: Repository<Move>,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   findState(matchId: string): Promise<GameState | null> {
@@ -57,33 +63,65 @@ export class GameService {
     await this.states.update({ matchId }, { status });
   }
 
-  /** Persist 1 nước đi (validation nằm ở engine/gateway Phase 6+). */
-  async recordMove(input: RecordMoveInput): Promise<Move> {
-    const last = await this.moves.find({
-      where: { matchId: input.matchId },
-      order: { moveNumber: 'DESC' },
-      take: 1,
+  /**
+   * Dựng lại engine state bằng cách replay toàn bộ moves từ thế khai cuộc.
+   * Cho repetition/history đúng ngay cả sau restart server.
+   */
+  async loadEngineState(matchId: string): Promise<EngineState | null> {
+    const moves = await this.moves.find({
+      where: { matchId },
+      order: { moveNumber: 'ASC' },
     });
-    const moveNumber = (last[0]?.moveNumber ?? 0) + 1;
-    const move = await this.moves.save(
-      this.moves.create({
-        matchId: input.matchId,
-        moveNumber,
-        playerId: input.playerId,
-        from: input.from,
-        to: input.to,
-        capturedPiece: input.capturedPiece ?? null,
-        notation: input.notation ?? null,
-        boardHash: input.boardHash ?? null,
-      }),
-    );
-    const state = await this.findState(input.matchId);
-    if (state) {
-      state.moveNumber = moveNumber;
-      state.turn = state.turn === Side.RED ? Side.BLACK : Side.RED;
-      state.lastMove = { from: input.from, to: input.to, moveNumber };
-      await this.states.save(state);
+    try {
+      let engine = createGame();
+      for (const m of moves) {
+        engine = applyMove(engine, m.from, m.to);
+        if (engine.result.over) break;
+      }
+      return engine;
+    } catch {
+      return null;
     }
-    return move;
+  }
+
+  /**
+   * Persist 1 nước đi đã được engine validate (gọi từ Gateway).
+   * Move + state update trong 1 transaction.
+   */
+  async applyMoveResult(input: ApplyMoveResultInput): Promise<{ move: Move; state: GameState }> {
+    return this.dataSource.transaction(async (em) => {
+      const moveNumber = (await em.count(Move, { where: { matchId: input.matchId } })) + 1;
+      const move = await em.save(
+        em.create(Move, {
+          matchId: input.matchId,
+          moveNumber,
+          playerId: input.playerId,
+          from: input.from,
+          to: input.to,
+          capturedPiece: input.capturedPiece ?? null,
+          notation: input.notation ?? `${input.from}-${input.to}`,
+          boardHash: input.boardHash ?? null,
+        }),
+      );
+      let state = await em.findOne(GameState, { where: { matchId: input.matchId } });
+      if (!state) {
+        state = em.create(GameState, {
+          matchId: input.matchId,
+          turn: input.turn,
+          moveNumber,
+          board: input.boardFen,
+          status: input.status,
+          lastMove: null,
+        });
+      } else {
+        state.turn = input.turn;
+        state.moveNumber = moveNumber;
+        state.board = input.boardFen;
+        state.status = input.status;
+      }
+      state.lastMove = { from: input.from, to: input.to, moveNumber };
+      await em.save(state);
+      return { move, state };
+    });
   }
 }

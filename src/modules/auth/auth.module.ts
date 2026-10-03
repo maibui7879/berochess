@@ -15,6 +15,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     TypeOrmModule.forFeature([RefreshToken]),
     PassportModule,
     JwtModule.registerAsync({
+      global: true,
       inject: [ConfigService],
       useFactory: (cs: ConfigService) => ({
         secret: cs.getOrThrow<string>('JWT_SECRET'),

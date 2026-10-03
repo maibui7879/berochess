@@ -1,8 +1,10 @@
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -24,6 +26,7 @@ export class MatchesService {
     @InjectRepository(MatchPlayer) private readonly players: Repository<MatchPlayer>,
     @InjectRepository(MatchSpectator)
     private readonly spectators: Repository<MatchSpectator>,
+    @Inject(forwardRef(() => GameService))
     private readonly game: GameService,
   ) {}
 

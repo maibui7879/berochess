@@ -1,0 +1,140 @@
+// Live verification for Phase 6 GameGateway (namespace /game).
+// Run: node ws-live-test.js   (needs backend on :3002)
+const { io } = require('socket.io-client');
+
+const BASE = 'http://localhost:3002';
+const results = [];
+function check(name, cond, extra = '') {
+  results.push([cond ? 'PASS' : 'FAIL', name, extra]);
+  console.log(`${cond ? 'PASS' : 'FAIL'}  ${name} ${extra}`);
+}
+
+async function api(method, path, token, body) {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, data };
+}
+
+async function waitForHealth(tries = 40) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(`${BASE}/api/health`);
+      if (r.ok) return true;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return false;
+}
+
+function connect(token) {
+  return new Promise((resolve, reject) => {
+    const s = io(`${BASE}/game`, { auth: { token }, timeout: 10000 });
+    s.on('connect', () => resolve(s));
+    s.on('connect_error', (e) => reject(e));
+    setTimeout(() => reject(new Error('connect timeout')), 15000);
+  });
+}
+
+function emitAck(socket, event, payload) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ ok: false, reason: 'ACK_TIMEOUT' }), 15000);
+    socket.emit(event, payload, (res) => {
+      clearTimeout(timer);
+      resolve(res);
+    });
+  });
+}
+
+function onceEvent(socket, event, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`event timeout: ${event}`)), timeoutMs);
+    socket.once(event, (data) => {
+      clearTimeout(timer);
+      resolve(data);
+    });
+  });
+}
+
+(async () => {
+  check('server up', await waitForHealth());
+  const tag = Math.floor(Math.random() * 999999);
+  const mk = (p) => ({ username: `ws${p}${tag}`, email: `ws${p}${tag}@t.local`, password: 'matkhau123' });
+  const A = (await api('POST', '/api/auth/register', null, mk('a'))).data;
+  const B = (await api('POST', '/api/auth/register', null, mk('b'))).data;
+  const C = (await api('POST', '/api/auth/register', null, mk('c'))).data;
+  check('register A/B/C', !!(A.accessToken && B.accessToken && C.accessToken));
+
+  const M = (await api('POST', '/api/matches', A.accessToken, { mode: 'CASUAL' })).data;
+  await api('POST', `/api/matches/${M.id}/join`, B.accessToken, {});
+  await api('POST', `/api/matches/${M.id}/ready`, A.accessToken);
+  await api('POST', `/api/matches/${M.id}/ready`, B.accessToken);
+  const g = await api('GET', `/api/matches/${M.id}`);
+  check('match PLAYING via REST', g.data.status === 'PLAYING', g.data.status);
+
+  const sA = await connect(A.accessToken);
+  const sB = await connect(B.accessToken);
+  check('WS connect A+B (JWT handshake)', sA.connected && sB.connected);
+
+  // B joins first so we can observe player:joined on A side later? A joins first.
+  const joinA = await emitAck(sA, 'match:join', { matchId: M.id });
+  check('A match:join snapshot', joinA.ok === true && joinA.myColor === 'RED', JSON.stringify(joinA.myColor));
+  check('snapshot has initial FEN', typeof joinA.state?.board === 'string' && joinA.state.board.startsWith('rnbakabnr'));
+
+  const joinedOnA = onceEvent(sA, 'player:joined');
+  const joinB = await emitAck(sB, 'match:join', { matchId: M.id });
+  check('B match:join snapshot BLACK', joinB.ok === true && joinB.myColor === 'BLACK');
+  const joinedEvt = await joinedOnA;
+  check('A receives player:joined for B', joinedEvt.userId === B.user.id, JSON.stringify(joinedEvt.color));
+
+  // A (RED) plays horse b0->c2.
+  const playedOnB = onceEvent(sB, 'move:played');
+  const ack1 = await emitAck(sA, 'move:request', { matchId: M.id, from: 'b0', to: 'c2' });
+  check('A move b0-c2 accepted', ack1.ok === true && ack1.moveNumber === 1, JSON.stringify(ack1));
+  const played1 = await playedOnB;
+  check('B receives move:played turn=BLACK', played1.turn === 'BLACK' && played1.from === 'b0', `turn=${played1.turn}`);
+
+  // A tries to move again out of turn.
+  const ack2 = await emitAck(sA, 'move:request', { matchId: M.id, from: 'c2', to: 'd4' });
+  check('A second move rejected NOT_YOUR_TURN', ack2.ok === false && ack2.reason === 'NOT_YOUR_TURN', JSON.stringify(ack2));
+
+  // B tries illegal rook slide through own pawn.
+  const ack3 = await emitAck(sB, 'move:request', { matchId: M.id, from: 'a9', to: 'a5' });
+  check('B illegal a9-a5 rejected ILLEGAL_MOVE', ack3.ok === false && ack3.reason === 'ILLEGAL_MOVE', JSON.stringify(ack3));
+
+  // B plays horse b9->c7.
+  const playedOnA = onceEvent(sA, 'move:played');
+  const ack4 = await emitAck(sB, 'move:request', { matchId: M.id, from: 'b9', to: 'c7' });
+  check('B move b9-c7 accepted', ack4.ok === true && ack4.moveNumber === 2, JSON.stringify(ack4));
+  const played2 = await playedOnA;
+  check('A receives move:played turn=RED', played2.turn === 'RED' && played2.to === 'c7');
+
+  // Spectator C joins room, sees state, but cannot move.
+  const sC = await connect(C.accessToken);
+  const joinC = await emitAck(sC, 'match:join', { matchId: M.id });
+  check('C spectator snapshot (no color)', joinC.ok === true && joinC.myColor === null);
+  const ack5 = await emitAck(sC, 'move:request', { matchId: M.id, from: 'h0', to: 'g2' });
+  check('C spectator move rejected NOT_A_PLAYER', ack5.ok === false && ack5.reason === 'NOT_A_PLAYER', JSON.stringify(ack5));
+
+  // DB persistence via REST.
+  const moves = await api('GET', `/api/game/moves/${M.id}?limit=10`);
+  check('DB has 2 moves in order', moves.data.length === 2 && moves.data[0].from === 'b0' && moves.data[1].from === 'b9');
+  const st = await api('GET', `/api/game/states/${M.id}`);
+  check('DB state turn=RED moveNumber=2', st.data.turn === 'RED' && st.data.moveNumber === 2, `turn=${st.data.turn} n=${st.data.moveNumber}`);
+
+  sA.disconnect();
+  sB.disconnect();
+  sC.disconnect();
+  const failed = results.filter(([s]) => s === 'FAIL').length;
+  console.log(`\n${results.length - failed}/${results.length} passed`);
+  process.exit(failed ? 1 : 0);
+})().catch((e) => {
+  console.error('SCRIPT ERROR', e);
+  process.exit(2);
+});
