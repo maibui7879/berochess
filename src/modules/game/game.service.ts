@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { START_FEN, applyMove, createGame } from 'xiangqi-engine';
+import { START_FEN, applyMove, createGame, formatSquare, getLegalMoves } from 'xiangqi-engine';
 import type { EngineState } from 'xiangqi-engine';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { MatchStatus, Side } from '../../common/enums';
@@ -82,6 +82,17 @@ export class GameService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Nước đi hợp lệ cho UI highlight (tính từ replay, chỉ đọc).
+   * Quyết định cuối cùng vẫn ở move:request phía server.
+   */
+  async getLegalMovesFor(matchId: string, from: string): Promise<string[]> {
+    if (!/^[a-i][0-9]$/.test(from)) throw new BadRequestException('Invalid square');
+    const engine = await this.loadEngineState(matchId);
+    if (!engine) return [];
+    return getLegalMoves(engine, from).map((sq) => formatSquare(sq));
   }
 
   /**

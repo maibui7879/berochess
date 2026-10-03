@@ -34,4 +34,13 @@ export class GameController {
   ) {
     return this.gameService.findMoves(matchId, query);
   }
+
+  @Public()
+  @Get('legal-moves/:matchId')
+  legalMoves(
+    @Param('matchId', ParseUUIDPipe) matchId: string,
+    @Query('from') from: string,
+  ) {
+    return this.gameService.getLegalMovesFor(matchId, from);
+  }
 }

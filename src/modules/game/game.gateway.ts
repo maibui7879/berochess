@@ -13,10 +13,12 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import {
   applyMove,
@@ -56,15 +58,39 @@ function toDbFen(board: Parameters<typeof boardToFenPart>[0], turn: Side): strin
 @Public()
 @UseGuards(WsAuthGuard)
 @WebSocketGateway({ namespace: '/game', cors: { origin: true, credentials: true } })
-export class GameGateway implements OnGatewayDisconnect {
+export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(GameGateway.name);
+  /** Mutex theo matchId: serialize mọi move:request, chống double-move khi race. */
+  private readonly moveLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly game: GameService,
     @Inject(forwardRef(() => MatchesService))
     private readonly matches: MatchesService,
+    private readonly jwt: JwtService,
   ) {}
+
+  /** Chặn ngay tại handshake: socket không JWT hợp lệ thì connect_error. */
+  afterInit(server: Server): void {
+    server.use(async (socket, next) => {
+      try {
+        const token =
+          (socket.handshake.auth?.['token'] as string | undefined) ??
+          socket.handshake.headers.authorization?.replace('Bearer ', '');
+        if (!token) return next(new Error('Missing WS token'));
+        const payload = await this.jwt.verifyAsync(token);
+        socket.data.user = {
+          userId: payload.sub,
+          username: payload.username,
+          role: payload.role,
+        };
+        next();
+      } catch {
+        next(new Error('Invalid WS token'));
+      }
+    });
+  }
 
   private userOf(client: AuthedSocket): GatewayUser {
     const user = client.data.user;
@@ -83,6 +109,23 @@ export class GameGateway implements OnGatewayDisconnect {
 
   private err(reason: string): { ok: false; reason: string } {
     return { ok: false, reason };
+  }
+
+  /** Chạy fn sau khi lock theo matchId xong (FIFO). Lock tự giải phóng. */
+  private async withMatchLock<T>(matchId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.moveLocks.get(matchId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.moveLocks.set(matchId, prev.then(() => current));
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.moveLocks.get(matchId) === current) this.moveLocks.delete(matchId);
+    }
   }
 
   @UsePipes(WS_PIPE)
@@ -154,6 +197,11 @@ export class GameGateway implements OnGatewayDisconnect {
   @UsePipes(WS_PIPE)
   @SubscribeMessage('move:request')
   async handleMove(@ConnectedSocket() client: AuthedSocket, @MessageBody() dto: WsMoveRequestDto) {
+    // Serialize theo match: 2 request đồng thời không thể cùng qua turn-check.
+    return this.withMatchLock(dto.matchId, () => this.applyMove(client, dto));
+  }
+
+  private async applyMove(client: AuthedSocket, dto: WsMoveRequestDto) {
     try {
       const { userId } = this.userOf(client);
       // 1-3. Match tồn tại + đang PLAYING + đúng player.

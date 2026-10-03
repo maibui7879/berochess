@@ -128,7 +128,49 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   const st = await api('GET', `/api/game/states/${M.id}`);
   check('DB state turn=RED moveNumber=2', st.data.turn === 'RED' && st.data.moveNumber === 2, `turn=${st.data.turn} n=${st.data.moveNumber}`);
 
+  // ---- Phase 7: server-authoritative hardening ----
+  // Race: 2 nước RED cùng lúc -> đúng 1 ok, còn lại NOT_YOUR_TURN.
+  const raceB = onceEvent(sB, 'move:played');
+  const [rr1, rr2] = await Promise.all([
+    emitAck(sA, 'move:request', { matchId: M.id, from: 'a3', to: 'a4' }),
+    emitAck(sA, 'move:request', { matchId: M.id, from: 'c3', to: 'c4' }),
+  ]);
+  const raceOk = [rr1, rr2].filter((r) => r.ok === true).length;
+  const raceTurn = [rr1, rr2].filter((r) => !r.ok && r.reason === 'NOT_YOUR_TURN').length;
+  check('race: exactly 1 move accepted', raceOk === 1 && raceTurn === 1, JSON.stringify([rr1.reason || 'ok', rr2.reason || 'ok']));
+  await raceB;
+
+  // Reconnect resync: socket mới join lại thấy đủ 3 moves.
   sA.disconnect();
+  const sA2 = await connect(A.accessToken);
+  const rejoin = await emitAck(sA2, 'match:join', { matchId: M.id });
+  check('reconnect resyncs latest state', rejoin.ok === true && rejoin.state?.moveNumber === 3, `n=${rejoin.state?.moveNumber}`);
+
+  // Socket không token bị từ chối.
+  const unauth = await new Promise((resolve) => {
+    const s = io(`${BASE}/game`, { timeout: 8000 });
+    s.on('connect', () => resolve('CONNECTED (BAD)'));
+    s.on('connect_error', () => resolve('REJECTED'));
+    setTimeout(() => resolve('TIMEOUT'), 10000);
+  });
+  check('unauthenticated socket rejected', unauth === 'REJECTED', String(unauth));
+
+  // Move trên match WAITING.
+  const W = (await api('POST', '/api/matches', A.accessToken, { mode: 'CASUAL' })).data;
+  const wMove = await emitAck(sA2, 'move:request', { matchId: W.id, from: 'b0', to: 'c2' });
+  check('move on WAITING match rejected', wMove.ok === false && wMove.reason === 'MATCH_NOT_PLAYING', JSON.stringify(wMove));
+
+  // Payload sai schema + match không tồn tại.
+  const bad = await emitAck(sA2, 'move:request', { matchId: M.id, from: 'zzz', to: 'c2' });
+  check('malformed move rejected', bad.ok === false, JSON.stringify(bad));
+  const ghost = await emitAck(sA2, 'move:request', { matchId: '00000000-0000-0000-0000-000000000000', from: 'b0', to: 'c2' });
+  check('move on unknown match rejected', ghost.ok === false && ghost.reason === 'MATCH_NOT_FOUND', JSON.stringify(ghost));
+
+  // Legal-moves read-only endpoint (turn BLACK, horse h9 -> g7/i7).
+  const lm = await api('GET', `/api/game/legal-moves/${M.id}?from=h9`);
+  check('legal-moves h9 = g7,i7', JSON.stringify(lm.data) === JSON.stringify(['g7', 'i7']), JSON.stringify(lm.data));
+
+  sA2.disconnect();
   sB.disconnect();
   sC.disconnect();
   const failed = results.filter(([s]) => s === 'FAIL').length;
