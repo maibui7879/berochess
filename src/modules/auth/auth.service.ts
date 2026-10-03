@@ -12,6 +12,7 @@ import { IsNull, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { RatingsService } from '../ratings/ratings.service';
 import { UsersService } from '../users/users.service';
+import { UserRole } from '../../common/enums';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -65,6 +66,23 @@ export class AuthService {
     private readonly tokens: Repository<RefreshToken>,
   ) {}
 
+  /** Email bootstrap admin (ADMIN_EMAILS, phân cách dấu phẩy). */
+  private isBootstrapAdmin(email: string): boolean {
+    const raw = this.config.get<string>('ADMIN_EMAILS') ?? '';
+    return raw
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean)
+      .includes(email.trim().toLowerCase());
+  }
+
+  private async ensureBootstrapAdmin(user: User): Promise<User> {
+    if (user.role !== UserRole.ADMIN && this.isBootstrapAdmin(user.email)) {
+      return this.users.update(user.id, { role: UserRole.ADMIN });
+    }
+    return user;
+  }
+
   async register(dto: RegisterDto) {
     if (await this.users.findByEmail(dto.email)) {
       throw new ConflictException('Email already registered');
@@ -78,15 +96,17 @@ export class AuthService {
       password: dto.password,
       displayName: dto.displayName,
     });
-    await this.ratings.ensureDefaults(user.id);
-    return this.issueTokenPair(toSafeUser(user));
+    const promoted = await this.ensureBootstrapAdmin(user);
+    await this.ratings.ensureDefaults(promoted.id);
+    return this.issueTokenPair(toSafeUser(promoted));
   }
 
   async login(dto: LoginDto) {
-    const user = await this.users.findByEmailWithPassword(dto.email);
-    if (!user || !(await argon2.verify(user.passwordHash, dto.password))) {
+    const found = await this.users.findByEmailWithPassword(dto.email);
+    if (!found || !(await argon2.verify(found.passwordHash, dto.password))) {
       throw new UnauthorizedException('Invalid credentials');
     }
+    const user = await this.ensureBootstrapAdmin(found);
     return this.issueTokenPair(toSafeUser(user));
   }
 

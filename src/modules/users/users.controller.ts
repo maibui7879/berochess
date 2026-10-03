@@ -15,10 +15,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { UserRole } from '../../common/enums';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UsersQueryDto } from './dto/users-query.dto';
 import { UsersService } from './users.service';
 
 @ApiTags('users')
@@ -28,7 +28,7 @@ export class UsersController {
 
   @Public()
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: UsersQueryDto) {
     return this.usersService.findAll(query);
   }
 

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
 import { Repository } from 'typeorm';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { UsersQueryDto } from './dto/users-query.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -23,12 +23,18 @@ export class UsersService {
     return this.users.save(user);
   }
 
-  findAll(query: PaginationQueryDto): Promise<User[]> {
-    return this.users.find({
-      take: Math.min(query.limit ?? 20, 100),
-      skip: query.offset ?? 0,
-      order: { createdAt: 'DESC' },
-    });
+  findAll(query: UsersQueryDto): Promise<User[]> {
+    const qb = this.users.createQueryBuilder('user');
+    if (query.role) qb.andWhere('user.role = :role', { role: query.role });
+    if (query.status) qb.andWhere('user.status = :status', { status: query.status });
+    if (query.search) {
+      qb.andWhere('(user.username ILIKE :q OR user.email ILIKE :q)', { q: `%${query.search}%` });
+    }
+    return qb
+      .orderBy('user.createdAt', 'DESC')
+      .take(Math.min(query.limit ?? 20, 100))
+      .skip(query.offset ?? 0)
+      .getMany();
   }
 
   findOne(id: string): Promise<User | null> {

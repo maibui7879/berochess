@@ -19,6 +19,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { CommentaryModule } from './modules/commentary/commentary.module';
 import { CrowdModule } from './modules/crowd/crowd.module';
 import { EventsModule } from './modules/events/events.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { GameModule } from './modules/game/game.module';
 import { MatchesModule } from './modules/matches/matches.module';
 import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
@@ -72,6 +73,7 @@ function buildTypeOrmConfig(cs: ConfigService) {
     ModerationModule,
     MatchmakingModule,
     EventsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
