@@ -19,6 +19,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { JwtService } from '@nestjs/jwt';
+import { Interval } from '@nestjs/schedule';
 import { Server, Socket } from 'socket.io';
 import {
   applyMove,
@@ -136,6 +137,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
       const match = await this.matches.findOne(dto.matchId);
       const players = await this.matches.findPlayers(dto.matchId);
       const state = await this.game.findState(dto.matchId);
+      const clock = await this.matches.getClockView(dto.matchId);
       const room = roomOf(dto.matchId);
       await client.join(room);
       this.track(client, dto.matchId);
@@ -155,6 +157,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
         match,
         players,
         state,
+        clock,
         myColor,
       };
     } catch (e) {
@@ -215,6 +218,10 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
             : null;
       if (!color) return this.err('NOT_A_PLAYER');
 
+      // 3b. Đồng hồ server-time: hết giờ thì thua ngay (không ghi gì nếu còn giờ).
+      const { flagged } = await this.matches.checkFlag(dto.matchId, color);
+      if (flagged) return this.err('TIME_FLAGGED');
+
       // 4-5. Dựng engine từ replay + verify turn + validate nước đi.
       const engine = await this.game.loadEngineState(dto.matchId);
       if (!engine) return this.err('NO_STATE');
@@ -237,7 +244,8 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
         status,
       });
 
-      // 7-8. Broadcast + kết thúc match nếu engine đã over.
+      // 7-8. Chốt đồng hồ (trừ giờ + increment) + broadcast + kết thúc nếu over.
+      const clock = await this.matches.commitMoveClock(dto.matchId, color);
       const check = !next.result.over && isInCheck(next.board, next.turn);
       const payload = {
         matchId: dto.matchId,
@@ -250,6 +258,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
         fen: toDbFen(next.board, next.turn as Side),
         turn: next.turn,
         check,
+        clock,
         result: next.result,
         state,
       };
@@ -282,6 +291,24 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
       this.server
         .to(roomOf(matchId))
         .emit('player:disconnected', { matchId, userId });
+    }
+  }
+
+  /** Quét hết giờ mỗi 5s (server-time). Match nào flag thì broadcast game:ended. */
+  @Interval(5000)
+  async handleTimeoutSweep(): Promise<void> {
+    try {
+      const timedOut = await this.matches.sweepTimeouts();
+      for (const t of timedOut) {
+        this.server.to(roomOf(t.matchId)).emit('game:ended', {
+          matchId: t.matchId,
+          winner: t.winner,
+          endReason: t.endReason,
+          result: { over: true, winner: t.winner, reason: 'TIMEOUT' },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`timeout sweep failed: ${(e as Error).message}`);
     }
   }
 

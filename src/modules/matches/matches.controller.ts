@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -113,6 +114,14 @@ export class MatchesController {
   @Get(':id/spectators')
   findSpectators(@Param('id', ParseUUIDPipe) id: string) {
     return this.matchesService.findSpectators(id);
+  }
+
+  @Public()
+  @Get(':id/clock')
+  async clock(@Param('id', ParseUUIDPipe) id: string) {
+    const clock = await this.matchesService.getClockView(id);
+    if (!clock) throw new NotFoundException('Clock not started');
+    return clock;
   }
 
   @ApiBearerAuth()

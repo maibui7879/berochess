@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsObject, IsOptional } from 'class-validator';
+import { IsEnum, IsObject, IsOptional, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { MatchMode } from '../../../common/enums';
+import { TimeControlDto } from './time-control.dto';
 
 export class CreateMatchDto {
   @ApiPropertyOptional({ enum: MatchMode, default: MatchMode.CASUAL })
@@ -12,4 +14,10 @@ export class CreateMatchDto {
   @IsOptional()
   @IsObject()
   ruleSet?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'Preset giờ. Mặc định 10 phút + 0s.' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TimeControlDto)
+  clock?: TimeControlDto;
 }

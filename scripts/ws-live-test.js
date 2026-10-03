@@ -170,6 +170,48 @@ function onceEvent(socket, event, timeoutMs = 15000) {
   const lm = await api('GET', `/api/game/legal-moves/${M.id}?from=h9`);
   check('legal-moves h9 = g7,i7', JSON.stringify(lm.data) === JSON.stringify(['g7', 'i7']), JSON.stringify(lm.data));
 
+  // ---- Phase 8: chess clock ----
+  check('join snapshot has clock', joinA.clock && joinA.clock.redMs <= 600000, JSON.stringify(joinA.clock && { red: joinA.clock.redMs, active: joinA.clock.activeColor }));
+  const D = (await api('POST', '/api/auth/register', null, mk('d'))).data;
+  const E = (await api('POST', '/api/auth/register', null, mk('e'))).data;
+  const CM = (await api('POST', '/api/matches', D.accessToken, { mode: 'CASUAL', clock: { initialMs: 60000, incrementMs: 2000 } })).data;
+  await api('POST', `/api/matches/${CM.id}/join`, E.accessToken, {});
+  await api('POST', `/api/matches/${CM.id}/ready`, D.accessToken);
+  await api('POST', `/api/matches/${CM.id}/ready`, E.accessToken);
+  const t0 = Date.now();
+  const clk0 = await api('GET', `/api/matches/${CM.id}/clock`);
+  check('clock starts 60s RED to move', clk0.data.redMs <= 60000 && clk0.data.blackMs === 60000 && clk0.data.activeColor === 'RED', JSON.stringify({ red: clk0.data.redMs, black: clk0.data.blackMs }));
+
+  const sD = await connect(D.accessToken);
+  await emitAck(sD, 'match:join', { matchId: CM.id });
+  const playedD = onceEvent(sD, 'move:played');
+  const dAck = await emitAck(sD, 'move:request', { matchId: CM.id, from: 'b0', to: 'c2' });
+  const t1 = Date.now();
+  const dPlayed = await playedD;
+  check('move:played carries clock', dAck.ok === true && !!dPlayed.clock && dPlayed.clock.activeColor === 'BLACK', JSON.stringify(dPlayed.clock && { red: dPlayed.clock.redMs, active: dPlayed.clock.activeColor }));
+  // increment ≈ red_after - (red_before - elapsed_thực) ~= +2000 (sai số mạng ±1500).
+  const landed = dPlayed.clock.redMs - (clk0.data.redMs - (t1 - t0));
+  check('fischer increment applied', landed >= 500 && landed <= 3500, `landed=${landed}`);
+
+  // Timeout: tiny clock -> sweeper (hoặc nước đi) kết thúc TIMEOUT.
+  const F = (await api('POST', '/api/auth/register', null, mk('f'))).data;
+  const G = (await api('POST', '/api/auth/register', null, mk('g'))).data;
+  const TM = (await api('POST', '/api/matches', F.accessToken, { mode: 'CASUAL', clock: { initialMs: 1500, incrementMs: 0 } })).data;
+  await api('POST', `/api/matches/${TM.id}/join`, G.accessToken, {});
+  await api('POST', `/api/matches/${TM.id}/ready`, F.accessToken);
+  await api('POST', `/api/matches/${TM.id}/ready`, G.accessToken);
+  await new Promise((r) => setTimeout(r, 8000));
+  let tm = await api('GET', `/api/matches/${TM.id}`);
+  if (tm.data.status !== 'FINISHED') {
+    const sF = await connect(F.accessToken);
+    const tAck = await emitAck(sF, 'move:request', { matchId: TM.id, from: 'b0', to: 'c2' });
+    check('flagged mover rejected', tAck.ok === false && (tAck.reason === 'TIME_FLAGGED' || tAck.reason === 'MATCH_NOT_PLAYING'), JSON.stringify(tAck));
+    sF.disconnect();
+    tm = await api('GET', `/api/matches/${TM.id}`);
+  }
+  check('timeout finishes BLACK wins', tm.data.status === 'FINISHED' && tm.data.winner === 'BLACK' && tm.data.endReason === 'TIMEOUT', JSON.stringify({ s: tm.data.status, w: tm.data.winner, e: tm.data.endReason }));
+  sD.disconnect();
+
   sA2.disconnect();
   sB.disconnect();
   sC.disconnect();
